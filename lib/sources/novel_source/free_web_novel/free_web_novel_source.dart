@@ -54,4 +54,13 @@ class FreeWebNovelSource extends BaseNovelSource {
     return parser.parseNovelDetail(html, novelId) ??
         (throw FormatException('Unable to parse novel detail: $novelId'));
   }
+
+  @override
+  Future<List<NovelChapterModal>> fetchNovelChapters(String novelId) async {
+    // Implement using the actual novel chapters URL.
+    final uri = Uri.parse('${sourceInfo.sourceUrl}/novel/$novelId');
+    final html = await _fetchPage(uri);
+    return parser.parseNovelChapters(html, novelId);
+    (throw FormatException('Unable to parse novel chapters: $novelId'));
+  }
 }

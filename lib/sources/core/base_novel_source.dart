@@ -11,4 +11,7 @@ abstract class BaseNovelSource {
 
   // novel detail
   Future<NovelDetailModal> fetchNovelDetail(String novelId);
+
+  // novel chapters
+  Future<List<NovelChapterModal>> fetchNovelChapters(String novelId);
 }

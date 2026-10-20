@@ -1,6 +1,10 @@
+import 'package:hizashi/core/network/cloudflare_aware_fetcher.dart';
 import 'package:hizashi/models/source/source.dart';
+import 'package:html/dom.dart' show Element;
 import 'package:html/parser.dart' as html_parser;
 import 'package:hizashi/models/novel.dart';
+import 'package:http/http.dart' as http;
+import 'package:hizashi/core/network/http_client.dart';
 
 class FreeWebNovelParser {
   final SourceModel sourceInfo;
@@ -56,13 +60,172 @@ class FreeWebNovelParser {
     final document = html_parser.parse(html);
     final titleElement = document.querySelector('h1.tit');
 
+    final descriptionElement = document.querySelector('.txt .inner');
+
+    final description =
+        descriptionElement
+            ?.querySelectorAll('p')
+            .map((element) => element.text.trim())
+            .where((text) => text.isNotEmpty)
+            .join('\n\n') ??
+        '';
+
+    // Helper: find the .item whose span title matches the requested value.
+    String? getInfo(String title) {
+      final items = document.querySelectorAll('.txt .item');
+
+      for (final item in items) {
+        final icon = item.querySelector('span[title]');
+
+        if (icon?.attributes['title'] == title) {
+          final value = item.querySelector('.right');
+          final text = value?.text.trim();
+
+          if (text != null && text.isNotEmpty) {
+            return text;
+          }
+        }
+      }
+
+      return null;
+    }
+
+    // Author
+    final author = getInfo('Author');
+
+    // Status
+    final status = getInfo('Status');
+
+    // Find a metadata item by its span title.
+    Element? getInfoItem(String title) {
+      for (final item in document.querySelectorAll('.txt .item')) {
+        if (item.querySelector('span[title]')?.attributes['title'] == title) {
+          return item;
+        }
+      }
+
+      return null;
+    }
+
+    // Genres
+    final genres =
+        getInfoItem('Genre')
+            ?.querySelectorAll('.right a')
+            .map((element) => element.text.trim())
+            .where((name) => name.isNotEmpty)
+            .toSet()
+            .map((name) => GenreModal(name: name))
+            .toList() ??
+        <GenreModal>[];
+
+    // Cover image
+    final imageElement = document.querySelector('.pic picture img');
+    final sourceElement = document.querySelector(
+      '.pic picture source[type="image/webp"]',
+    );
+
+    String? coverPath;
+
+    // Prefer the highest-resolution WebP image from srcset.
+    final srcset = sourceElement?.attributes['srcset'];
+
+    if (srcset != null && srcset.isNotEmpty) {
+      final candidates = srcset.split(',');
+
+      if (candidates.isNotEmpty) {
+        // Example: /cache/cover-webp/...-w300.webp 300w
+        final largestCandidate = candidates.last.trim();
+        coverPath = largestCandidate.split(RegExp(r'\s+')).first;
+      }
+    }
+
+    // Fall back to the regular img src.
+    coverPath ??= imageElement?.attributes['src'];
+
+    final coverUrl = coverPath == null
+        ? ''
+        : Uri.parse('${sourceInfo.sourceUrl}$coverPath').toString();
+
     return NovelDetailModal(
       sourceId: sourceInfo.sourceId.toString(),
       novelId: novelId,
       title: titleElement?.text.trim() ?? "",
-      coverUrl:
-          "https://freewebnovel.com/cache/cover-webp/1/1991/1991-1653728234-w100.webp",
-      description: "Shadow Slave",
+      coverUrl: coverUrl,
+      description: description,
+      author: author,
+      status: status,
+      genres: genres,
     );
+  }
+
+  List<NovelChapterModal> parseNovelChapters(String html, String novelId) {
+    final document = html_parser.parse(html);
+
+    // Get the highest chapter number from the latest-chapters section.
+    final latestChapterDiv = document.querySelector('ul.ul-list5');
+    final lastChapter = latestChapterDiv?.querySelector('li a');
+
+    final lastChapterMatch = RegExp(
+      r'Chapter\s+(\d+)',
+      caseSensitive: false,
+    ).firstMatch(lastChapter?.text ?? '');
+
+    final lastChapterNumber = lastChapterMatch != null
+        ? int.parse(lastChapterMatch.group(1)!)
+        : 0;
+
+    // Generate the chapter list.
+    final chapters = <NovelChapterModal>[];
+
+    for (int chapterNum = 1; chapterNum <= lastChapterNumber; chapterNum++) {
+      chapters.add(
+        NovelChapterModal(
+          sourceId: sourceInfo.sourceId.toString(),
+          novelId: novelId,
+          chapterId: '$chapterNum',
+          title: 'Chapter $chapterNum',
+          url: 'chapter-$chapterNum',
+          chapterNumber: chapterNum,
+        ),
+      );
+    }
+
+    // Extract actual chapter titles and URLs from the HTML.
+    for (final element in document.querySelectorAll('li a.con')) {
+      final title = element.attributes['title']?.trim() ?? element.text.trim();
+
+      final href = element.attributes['href'];
+
+      if (href == null || href.isEmpty) continue;
+
+      final match = RegExp(
+        r'/chapter-(\d+)',
+        caseSensitive: false,
+      ).firstMatch(href);
+
+      if (match == null) continue;
+
+      final chapterNumber = int.parse(match.group(1)!);
+
+      // Match the extracted chapter to the generated chapter.
+      final index = chapters.indexWhere(
+        (chapter) => chapter.chapterNumber == chapterNumber,
+      );
+
+      if (index == -1) continue;
+
+      chapters[index] = NovelChapterModal(
+        sourceId: sourceInfo.sourceId.toString(),
+        novelId: novelId,
+        chapterId: '$chapterNumber',
+        title: title,
+        url: href,
+        chapterNumber: chapterNumber,
+      );
+
+      print('Updated: $chapterNumber - $title');
+    }
+
+    return chapters;
   }
 }
