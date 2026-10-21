@@ -222,8 +222,6 @@ class FreeWebNovelParser {
         url: href,
         chapterNumber: chapterNumber,
       );
-
-      print('Updated: $chapterNumber - $title');
     }
 
     return chapters;

@@ -47,7 +47,7 @@ class NovelChapterModal {
   final String chapterId;
   final String title;
   final String url;
-  final int? chapterNumber;
+  final int chapterNumber;
 
   const NovelChapterModal({
     required this.sourceId,
@@ -55,6 +55,6 @@ class NovelChapterModal {
     required this.chapterId,
     required this.title,
     required this.url,
-    this.chapterNumber,
+    required this.chapterNumber,
   });
 }

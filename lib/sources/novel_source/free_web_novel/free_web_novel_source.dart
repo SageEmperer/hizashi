@@ -48,6 +48,7 @@ class FreeWebNovelSource extends BaseNovelSource {
 
   @override
   Future<NovelDetailModal> fetchNovelDetail(String novelId) async {
+    print("fetching teh novel data----------------------------");
     // Implement using the actual novel detail URL.
     final uri = Uri.parse('${sourceInfo.sourceUrl}/novel/$novelId');
     final html = await _fetchPage(uri);
